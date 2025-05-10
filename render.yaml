@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: spotify-flask-app
+    env: python
+    buildCommand: ""
+    startCommand: gunicorn server:app
+    plan: free
