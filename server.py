@@ -13,15 +13,16 @@ TOKEN_URL = "https://accounts.spotify.com/api/token"
 
 @app.route("/login")
 def login():
-    auth_url = (
-        "https://accounts.spotify.com/authorize?"
-        + urllib.parse.urlencode({
+    query = urllib.parse.urlencode({
         "client_id": CLIENT_ID,
         "response_type": "code",
         "redirect_uri": REDIRECT_URI,
         "scope": SCOPE
-    }
-    return redirect(f"{AUTH_URL}?{urllib.parse.urlencode(query)}")
+    })
+
+    auth_url = f"https://accounts.spotify.com/authorize?{query}"
+    return redirect(auth_url)
+
 
 @app.route("/callback")
 def callback():
