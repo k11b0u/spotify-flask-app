@@ -11,9 +11,11 @@ AUTH_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 
 
-@app.route("/")
+@app.route("/login")
 def login():
-    query = {
+    auth_url = (
+        "https://accounts.spotify.com/authorize?"
+        + urllib.parse.urlencode({
         "client_id": CLIENT_ID,
         "response_type": "code",
         "redirect_uri": REDIRECT_URI,
