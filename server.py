@@ -25,44 +25,63 @@ def login():
 
 @app.route("/callback")
 def callback():
-     code = request.args.get("code")
-     auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
-     b64_auth = base64.b64encode(auth_str.encode()).decode()
+    code = request.args.get("code")
+    auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
 
-     # アクセストークン取得
-     res = requests.post(
-         TOKEN_URL,
-         data={
-             "grant_type": "authorization_code",
-             "code": code,
-             "redirect_uri": REDIRECT_URI
-         },
-         headers={
-             "Authorization": f"Basic {b64_auth}",
-             "Content-Type": "application/x-www-form-urlencoded"
-         }
-     )
-     token = res.json().get("access_token")
+    res = requests.post(
+        TOKEN_URL,
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI
+        },
+        headers={
+            "Authorization": f"Basic {b64_auth}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+    )
 
-    # ログイン中のユーザー情報を取得
+    token = res.json().get("access_token")
+
+    # 1) ログイン中のユーザー情報を取得
     user_info = requests.get(
         "https://api.spotify.com/v1/me",
         headers={"Authorization": f"Bearer {token}"}
     ).json()
 
-    # 例：ユーザー名とIDをビューに埋め込む
-    user_line = f"🔍 ログイン中ユーザー: {user_info.get('display_name')} ({user_info.get('id')})<br><br>"
+    # 2) 接続中デバイス一覧を取得
+    devices_resp = requests.get(
+        "https://api.spotify.com/v1/me/player/devices",
+        headers={"Authorization": f"Bearer {token}"}
+    ).json()
 
-     # プレイリスト再生リクエスト
-     requests.put(
-         "https://api.spotify.com/v1/me/player/play",
-         headers={"Authorization": f"Bearer {token}"},
-         json={"context_uri": playlist_uri}
-     )
+    # デバイス名のリストを組み立て
+    device_names = [d["name"] for d in devices_resp.get("devices", [])]
+    devices_line = (
+        "🔌 接続中のデバイス: "
+         (", ".join(device_names) if device_names else "なし")
+         "<br><br>"
+    )
 
-    # ユーザー情報を先頭に付けて返す
-    return user_line + "✅ Spotifyに再生リクエストを送りました！"
+    # ユーザー名／ID も一緒に表示
+    user_line = (
+        f"👤 ログイン中ユーザー: "
+        f"{user_info.get('display_name')} ({user_info.get('id')})<br>"
+    )
+    user_line += f"📧 メール: {user_info.get('email')}<br><br>"
 
+    # プレイリスト再生リクエスト
+    playlist_uri = "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+    requests.put(
+        "https://api.spotify.com/v1/me/player/play",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"context_uri": playlist_uri}
+    )
 
-if __name__ == "__main__":
-    app.run()
+    # ブラウザ上で誰でどのデバイスにログインしているか確認できるように
+    return (
+        user_line
+         devices_line
+         "✅ Spotify に再生リクエストを送りました！"
+    )
