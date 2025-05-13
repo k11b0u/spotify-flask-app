@@ -11,6 +11,12 @@ AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
 
 
+# ルートに何も返さないと 404 → ヘルスチェックNG になることがあるので
+@app.route("/")
+def index():
+    return "🎧 Spotify 再生デモ — /login にアクセスしてください"
+
+
 @app.route("/login")
 def login():
     params = {
@@ -24,9 +30,8 @@ def login():
 
 @app.route("/callback")
 def callback():
+    # --- トークン取得 ---
     code = request.args.get("code")
-
-    # ==== トークン取得 ====
     auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
     b64_auth = base64.b64encode(auth_str.encode()).decode()
     res = requests.post(
@@ -37,13 +42,13 @@ def callback():
             "redirect_uri": REDIRECT_URI,
         },
         headers={
-            "Authorization":   f"Basic {b64_auth}",
-            "Content-Type":    "application/x-www-form-urlencoded",
+            "Authorization": f"Basic {b64_auth}",
+            "Content-Type":  "application/x-www-form-urlencoded",
         },
     )
     token = res.json().get("access_token")
 
-    # ==== ユーザー情報取得 ====
+    # --- ユーザー情報取得 ---
     user_info = requests.get(
         "https://api.spotify.com/v1/me",
         headers={"Authorization": f"Bearer {token}"}
@@ -54,39 +59,30 @@ def callback():
         f"📧 メール: {user_info.get('email')}<br><br>"
     )
 
-    # ==== デバイス一覧取得 ====
+    # --- デバイス一覧取得 ---
     devices_resp = requests.get(
         "https://api.spotify.com/v1/me/player/devices",
         headers={"Authorization": f"Bearer {token}"}
     ).json()
     devices = devices_resp.get("devices", [])
-
-    # ブラウザ表示用の一覧行
-    info_lines = [
-        f"{d['name']} → {d['id']}"
-        for d in devices
-    ]
+    info_lines = [f"{d['name']} → {d['id']}" for d in devices]
     devices_html = (
         "🔌 接続中のデバイス:<br>"
         + ("<br>".join(info_lines) if info_lines else "なし")
         + "<br><br>"
     )
 
-    # ==== 再生リクエスト ====
-    # (例: 先頭のデバイスを指定する)
+    # --- 再生リクエスト（先頭のデバイスを指定）---
     device_id = devices[0]["id"] if devices else None
     play_url = "https://api.spotify.com/v1/me/player/play"
     if device_id:
         play_url += f"?device_id={device_id}"
-
-    # 再生コンテキスト（プレイリスト）を送信
     requests.put(
         play_url,
         headers={"Authorization": f"Bearer {token}"},
         json={"context_uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"}
     )
 
-    # ==== 結果を返す ====
     return (
         user_line
         + devices_html
