@@ -25,7 +25,24 @@ def login():
 
 @app.route("/callback")
 def callback():
-    # …省略…
+    code = request.args.get("code")
+    auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+
+    # ← ここから再挿入してください
+    res = requests.post(
+        TOKEN_URL,
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI
+        },
+        headers={
+            "Authorization": f"Basic {b64_auth}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+    )
+    # ← ここまで
 
     token = res.json().get("access_token")
 
