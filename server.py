@@ -110,7 +110,7 @@ def emotion_play():
         "happy": "spotify:playlist:37i9dQZF1DXdPec7aLTmlC",  # Happy Hits!
         "sad": "spotify:playlist:37i9dQZF1DWVrtsSlLKzro",    # Sad Songs
         "calm": "spotify:playlist:37i9dQZF1DX3rxVfibe1L0",    # Chill
-        "angry": "spotify:playlist:37i9dQZF1DX59NCqCqJtoH",   # Rock Hard
+        "angry": "spotify:playlist:37i9dQZF1EIeIgNZCaOGbMi",   # Rock Hard
     }
 
     playlist_uri = emotion_to_playlist.get(emotion)
