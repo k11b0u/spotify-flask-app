@@ -25,44 +25,44 @@ def login():
 
 @app.route("/callback")
 def callback():
-    code = request.args.get("code")
-    auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
-    b64_auth = base64.b64encode(auth_str.encode()).decode()
+     code = request.args.get("code")
+     auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
+     b64_auth = base64.b64encode(auth_str.encode()).decode()
 
-    res = requests.post(TOKEN_URL, data={
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": REDIRECT_URI
-    }, headers={
-        "Authorization": f"Basic {b64_auth}",
-        "Content-Type": "application/x-www-form-urlencoded"
-    })
+     # アクセストークン取得
+     res = requests.post(
+         TOKEN_URL,
+         data={
+             "grant_type": "authorization_code",
+             "code": code,
+             "redirect_uri": REDIRECT_URI
+         },
+         headers={
+             "Authorization": f"Basic {b64_auth}",
+             "Content-Type": "application/x-www-form-urlencoded"
+         }
+     )
+     token = res.json().get("access_token")
 
-    # ★ ここでレスポンスをログに出す
-    print("🔓 トークン取得レスポンス:", res.status_code, res.text)
++    # ログイン中のユーザー情報を取得
++    user_info = requests.get(
++        "https://api.spotify.com/v1/me",
++        headers={"Authorization": f"Bearer {token}"}
++    ).json()
++
++    # 例：ユーザー名とIDをビューに埋め込む
++    user_line = f"🔍 ログイン中ユーザー: {user_info.get('display_name')} ({user_info.get('id')})<br><br>"
 
-    if res.status_code != 200:
-        return f"❌ トークン取得失敗: {res.text}"
+     # プレイリスト再生リクエスト
+     requests.put(
+         "https://api.spotify.com/v1/me/player/play",
+         headers={"Authorization": f"Bearer {token}"},
+         json={"context_uri": playlist_uri}
+     )
 
-    token = res.json().get("access_token")
-
-    if not token:
-        return "❌ access_token が見つかりませんでした。"
-
-    # ユーザー情報も表示（オプション）
-    user_info = requests.get("https://api.spotify.com/v1/me", headers={
-        "Authorization": f"Bearer {token}"
-    }).json()
-
-    print("👤 ログイン中のユーザー情報:", user_info)
-
-    # プレイリスト再生
-    requests.put("https://api.spotify.com/v1/me/player/play", headers={
-        "Authorization": f"Bearer {token}"
-    }, json={"context_uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"})
-
-    return "✅ Spotifyに再生リクエストを送りました！"
-
+-    return "✅ Spotifyに再生リクエストを送りました！"
++    # ユーザー情報を先頭に付けて返す
++    return user_line + "✅ Spotifyに再生リクエストを送りました！"
 
 
 if __name__ == "__main__":
