@@ -40,6 +40,12 @@ def callback():
 
     token = res.json().get("access_token")
 
+    user_info = requests.get("https://api.spotify.com/v1/me", headers={
+    "Authorization": f"Bearer {token}"
+}).json()
+
+print("🔍 ログイン中のユーザー情報:", user_info)
+
     # プレイリスト再生（Spotifyアプリが開いていれば再生される）
     playlist_uri = "spotify:playlist:37i9dQZF1DXdPec7aLTmlC"
     requests.put("https://api.spotify.com/v1/me/player/play", headers={
