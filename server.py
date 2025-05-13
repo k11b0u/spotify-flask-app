@@ -4,7 +4,7 @@ import requests, urllib.parse, base64
 app = Flask(__name__)
 
 CLIENT_ID = "7838a0cf003644ae8b5f3f75b9eb534e"
-CLIENT_SECRET = "f78cf9e77948400aabdc89b7d31b28ff"
+CLIENT_SECRET = "d2d93b5ce2b7403f91125a0ea8685697"
 REDIRECT_URI = "https://spotify-flask-app-pduk.onrender.com/callback"
 SCOPE = "user-read-playback-state user-modify-playback-state streaming"
 AUTH_URL = "https://accounts.spotify.com/authorize"
