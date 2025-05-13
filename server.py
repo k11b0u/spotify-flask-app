@@ -38,24 +38,31 @@ def callback():
         "Content-Type": "application/x-www-form-urlencoded"
     })
 
+    # ★ ここでレスポンスをログに出す
+    print("🔓 トークン取得レスポンス:", res.status_code, res.text)
+
+    if res.status_code != 200:
+        return f"❌ トークン取得失敗: {res.text}"
+
     token = res.json().get("access_token")
 
-    # ✅ ログインユーザー情報取得
+    if not token:
+        return "❌ access_token が見つかりませんでした。"
+
+    # ユーザー情報も表示（オプション）
     user_info = requests.get("https://api.spotify.com/v1/me", headers={
         "Authorization": f"Bearer {token}"
     }).json()
 
-    print("🔍 ログイン中のユーザー情報:", user_info)
+    print("👤 ログイン中のユーザー情報:", user_info)
 
-    # ✅ プレイリスト再生（Spotifyアプリが開いていれば再生される）
-    playlist_uri = "spotify:playlist:37i9dQZF1DXdPec7aLTmlC"
+    # プレイリスト再生
     requests.put("https://api.spotify.com/v1/me/player/play", headers={
         "Authorization": f"Bearer {token}"
-    }, json={
-        "context_uri": playlist_uri
-    })
+    }, json={"context_uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"})
 
     return "✅ Spotifyに再生リクエストを送りました！"
+
 
 
 if __name__ == "__main__":
