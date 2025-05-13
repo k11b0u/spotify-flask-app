@@ -44,14 +44,14 @@ def callback():
      )
      token = res.json().get("access_token")
 
-+    # ログイン中のユーザー情報を取得
-+    user_info = requests.get(
-+        "https://api.spotify.com/v1/me",
-+        headers={"Authorization": f"Bearer {token}"}
-+    ).json()
-+
-+    # 例：ユーザー名とIDをビューに埋め込む
-+    user_line = f"🔍 ログイン中ユーザー: {user_info.get('display_name')} ({user_info.get('id')})<br><br>"
+    # ログイン中のユーザー情報を取得
+    user_info = requests.get(
+        "https://api.spotify.com/v1/me",
+        headers={"Authorization": f"Bearer {token}"}
+    ).json()
+
+    # 例：ユーザー名とIDをビューに埋め込む
+    user_line = f"🔍 ログイン中ユーザー: {user_info.get('display_name')} ({user_info.get('id')})<br><br>"
 
      # プレイリスト再生リクエスト
      requests.put(
@@ -60,9 +60,8 @@ def callback():
          json={"context_uri": playlist_uri}
      )
 
--    return "✅ Spotifyに再生リクエストを送りました！"
-+    # ユーザー情報を先頭に付けて返す
-+    return user_line + "✅ Spotifyに再生リクエストを送りました！"
+    # ユーザー情報を先頭に付けて返す
+    return user_line + "✅ Spotifyに再生リクエストを送りました！"
 
 
 if __name__ == "__main__":
