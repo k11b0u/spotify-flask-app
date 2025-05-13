@@ -25,22 +25,7 @@ def login():
 
 @app.route("/callback")
 def callback():
-    code = request.args.get("code")
-    auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
-    b64_auth = base64.b64encode(auth_str.encode()).decode()
-
-    res = requests.post(
-        TOKEN_URL,
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": REDIRECT_URI
-        },
-        headers={
-            "Authorization": f"Basic {b64_auth}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-    )
+    # …省略…
 
     token = res.json().get("access_token")
 
@@ -60,8 +45,8 @@ def callback():
     device_names = [d["name"] for d in devices_resp.get("devices", [])]
     devices_line = (
         "🔌 接続中のデバイス: "
-         (", ".join(device_names) if device_names else "なし")
-         "<br><br>"
+        + (", ".join(device_names) if device_names else "なし")
+        + "<br><br>"
     )
 
     # ユーザー名／ID も一緒に表示
@@ -79,9 +64,9 @@ def callback():
         json={"context_uri": playlist_uri}
     )
 
-    # ブラウザ上で誰でどのデバイスにログインしているか確認できるように
+    # ユーザー／デバイス情報と再生結果を返す
     return (
         user_line
-         devices_line
-         "✅ Spotify に再生リクエストを送りました！"
+        + devices_line
+        + "✅ Spotify に再生リクエストを送りました！"
     )
