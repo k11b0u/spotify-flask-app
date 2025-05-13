@@ -45,6 +45,7 @@ def callback():
     requests.put("https://api.spotify.com/v1/me/player/play", headers={
         "Authorization": f"Bearer {token}"
     },json={"context_uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"}
+                )
 
 
     return "✅ Spotifyに再生リクエストを送りました！"
