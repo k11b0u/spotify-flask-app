@@ -15,7 +15,7 @@ global_device_id = None
 
 @app.route("/")
 def index():
-    return "🎧 Spotify 再生デモ — /login にアクセスしてください"
+    return "\U0001F3A7 Spotify 再生デモ — /login にアクセスしてください"
 
 @app.route("/login")
 def login():
@@ -38,13 +38,13 @@ def callback():
     res = requests.post(
         TOKEN_URL,
         data={
-            "grant_type":   "authorization_code",
-            "code":         code,
+            "grant_type": "authorization_code",
+            "code": code,
             "redirect_uri": REDIRECT_URI,
         },
         headers={
             "Authorization": f"Basic {b64_auth}",
-            "Content-Type":  "application/x-www-form-urlencoded",
+            "Content-Type": "application/x-www-form-urlencoded",
         },
     )
     token = res.json().get("access_token")
@@ -63,14 +63,14 @@ def callback():
 def personal_play_debug():
     global global_token, global_device_id
 
-    if not global_token or not global_device_id:
-        return "❌ ログインまたはデバイス未取得です /login にアクセスしてください"
+    if not global_token:
+        return "❌ ログインが必要です"
 
-    # 1. フォロー中アーティスト取得（最大50）
     artists_resp = requests.get(
         "https://api.spotify.com/v1/me/following?type=artist&limit=50",
         headers={"Authorization": f"Bearer {global_token}"}
     ).json()
+
     artists = artists_resp.get("artists", {}).get("items", [])
     artist_ids = [a["id"] for a in artists]
 
@@ -82,35 +82,42 @@ def personal_play_debug():
         ).json()
         all_tracks.extend(top_resp.get("tracks", []))
 
-    track_ids = [t["id"] for t in all_tracks]
+    track_ids = [t["id"] for t in all_tracks if t.get("id")]
     features_resp = requests.get(
         "https://api.spotify.com/v1/audio-features",
         headers={"Authorization": f"Bearer {global_token}"},
         params={"ids": ",".join(track_ids[:100])}
     ).json()
+
     features = features_resp.get("audio_features", [])
 
-    bright_tracks = []
-    debug_lines = []
-    for track, feat in zip(all_tracks, features):
-        if feat is None:
-            debug_lines.append(f"🔍 {track['name']} → 特徴量取得失敗")
+    bright = []
+    not_bright = []
+    for t, f in zip(all_tracks, features):
+        if not f:
             continue
-        val = feat.get("valence")
-        en = feat.get("energy")
-        debug_lines.append(f"🔍 {track['name']} → valence={val}, energy={en}")
-        if val is not None and en is not None and val > 0.6 and en > 0.5:
-            bright_tracks.append(track)
+        val = f["valence"]
+        energy = f["energy"]
+        if val > 0.5 and energy > 0.4:
+            bright.append((t["name"], val, energy))
+        else:
+            not_bright.append((t["name"], val, energy))
 
-    chosen = random.choice(bright_tracks)["name"] if bright_tracks else "なし"
+    html = f"""
+    🧑‍🎤 アーティスト数: {len(artist_ids)}<br>
+    📘 トラック数: {len(track_ids)}<br>
+    📍 明るい曲数: {len(bright)}<br>
+    🎵 選曲: なし<br><br>
+    <b>🎶 明るい曲:</b><br>
+    """
+    for name, val, energy in bright:
+        html += f"✅ {name} (valence: {val:.2f}, energy: {energy:.2f})<br>"
 
-    return (
-        f"🧑 アーティスト数: {len(artist_ids)}<br>"
-        f"📘 トラック数: {len(track_ids)}<br>"
-        f"📍 明るい曲数: {len(bright_tracks)}<br>"
-        f"🎵 選曲: {chosen}<br><br>"
-        + "<br>".join(debug_lines)
-    )
+    html += "<br><b>🎶 明るくない曲:</b><br>"
+    for name, val, energy in not_bright:
+        html += f"❌ {name} (valence: {val:.2f}, energy: {energy:.2f})<br>"
+
+    return html
 
 if __name__ == "__main__":
     app.run()
