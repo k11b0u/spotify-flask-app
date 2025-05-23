@@ -10,13 +10,12 @@ SCOPE         = "user-read-playback-state user-modify-playback-state user-follow
 AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
 
-# グローバル状態
 global_token = None
 global_device_id = None
 
 @app.route("/")
 def index():
-    return "🎧 Spotify 再生デモ — /login にアクセスしてください"
+    return "🎷 Spotify 再生デモ — /login にアクセスしてください"
 
 @app.route("/login")
 def login():
@@ -69,7 +68,7 @@ def personal_play():
 
     # 1. フォロー中アーティスト取得
     artists_resp = requests.get(
-        "https://api.spotify.com/v1/me/following?type=artist&limit=10",
+        "https://api.spotify.com/v1/me/following?type=artist&limit=50",
         headers={"Authorization": f"Bearer {global_token}"}
     ).json()
 
@@ -92,12 +91,12 @@ def personal_play():
     features_resp = requests.get(
         "https://api.spotify.com/v1/audio-features",
         headers={"Authorization": f"Bearer {global_token}"},
-        params={"ids": ",".join(track_ids[:100])}  # 100件制限
+        params={"ids": ",".join(track_ids[:100])}
     ).json()
 
     features = features_resp.get("audio_features", [])
     bright_tracks = [t for t, f in zip(all_tracks, features)
-                     if f and f["valence"] > 0.6 and f["energy"] > 0.5]
+                     if f and f["valence"] > 0.4 and f["energy"] > 0.3]
 
     if not bright_tracks:
         return "😓 明るい曲が見つかりませんでした"
@@ -105,7 +104,6 @@ def personal_play():
     selected = random.choice(bright_tracks)
     uri = selected["uri"]
 
-    # 再生
     play_url = f"https://api.spotify.com/v1/me/player/play?device_id={global_device_id}"
     requests.put(
         play_url,
@@ -117,3 +115,4 @@ def personal_play():
 
 if __name__ == "__main__":
     app.run()
+
