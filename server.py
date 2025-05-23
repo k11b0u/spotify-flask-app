@@ -66,18 +66,14 @@ def personal_play_debug():
     if not global_token or not global_device_id:
         return "❌ ログインまたはデバイス未取得です /login にアクセスしてください"
 
-    # 1. フォロー中アーティスト取得（複数ページ処理）
-    artists = []
-    url = "https://api.spotify.com/v1/me/following?type=artist&limit=50"
-    while url:
-        resp = requests.get(url, headers={"Authorization": f"Bearer {global_token}"}).json()
-        items = resp.get("artists", {}).get("items", [])
-        artists.extend(items)
-        url = resp.get("artists", {}).get("next")
-
+    # 1. フォロー中アーティスト取得（最大50）
+    artists_resp = requests.get(
+        "https://api.spotify.com/v1/me/following?type=artist&limit=50",
+        headers={"Authorization": f"Bearer {global_token}"}
+    ).json()
+    artists = artists_resp.get("artists", {}).get("items", [])
     artist_ids = [a["id"] for a in artists]
 
-    # 2. トップトラック取得
     all_tracks = []
     for artist_id in artist_ids:
         top_resp = requests.get(
@@ -86,42 +82,35 @@ def personal_play_debug():
         ).json()
         all_tracks.extend(top_resp.get("tracks", []))
 
-    # 3. 特徴量取得（100曲ずつ）
-    features = []
-    for i in range(0, len(all_tracks), 100):
-        batch = all_tracks[i:i+100]
-        ids = [t["id"] for t in batch]
-        f_resp = requests.get(
-            "https://api.spotify.com/v1/audio-features",
-            headers={"Authorization": f"Bearer {global_token}"},
-            params={"ids": ",".join(ids)}
-        ).json()
-        features.extend(f_resp.get("audio_features", []))
+    track_ids = [t["id"] for t in all_tracks]
+    features_resp = requests.get(
+        "https://api.spotify.com/v1/audio-features",
+        headers={"Authorization": f"Bearer {global_token}"},
+        params={"ids": ",".join(track_ids[:100])}
+    ).json()
+    features = features_resp.get("audio_features", [])
 
-    # 4. 明るい曲フィルタ（valence > 0.5, energy > 0.4）
     bright_tracks = []
     debug_lines = []
-    for t, f in zip(all_tracks, features):
-        if f:
-            valence = f.get("valence", 0)
-            energy = f.get("energy", 0)
-            debug_lines.append(f"{t['name']} → valence: {valence:.2f}, energy: {energy:.2f}")
-            if valence > 0.5 and energy > 0.4:
-                bright_tracks.append(t)
+    for track, feat in zip(all_tracks, features):
+        if feat is None:
+            debug_lines.append(f"🔍 {track['name']} → 特徴量取得失敗")
+            continue
+        val = feat.get("valence")
+        en = feat.get("energy")
+        debug_lines.append(f"🔍 {track['name']} → valence={val}, energy={en}")
+        if val is not None and en is not None and val > 0.6 and en > 0.5:
+            bright_tracks.append(track)
 
-    selected = random.choice(bright_tracks) if bright_tracks else None
+    chosen = random.choice(bright_tracks)["name"] if bright_tracks else "なし"
 
-    # HTML出力
-    html = (
-        f"🧑‍🎤 アーティスト数: {len(artist_ids)}<br>"
-        f"📘 トラック数: {len(all_tracks)}<br>"
-        f"🎈 明るい曲数: {len(bright_tracks)}<br>"
-        f"🎵 選曲: {selected['name'] if selected else 'なし'}<br><br>"
-        + "<br>".join(debug_lines[:50])  # 多すぎるので50曲まで表示
+    return (
+        f"🧑 アーティスト数: {len(artist_ids)}<br>"
+        f"📘 トラック数: {len(track_ids)}<br>"
+        f"📍 明るい曲数: {len(bright_tracks)}<br>"
+        f"🎵 選曲: {chosen}<br><br>"
+        + "<br>".join(debug_lines)
     )
-
-    return html
 
 if __name__ == "__main__":
     app.run()
-
