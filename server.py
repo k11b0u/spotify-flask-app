@@ -1,4 +1,4 @@
-from flask import Flask, redirect, request, Response
+from flask import Flask, redirect, request
 import requests, urllib.parse, base64, random
 
 app = Flask(__name__)
@@ -64,17 +64,20 @@ def personal_play_debug():
     global global_token, global_device_id
 
     if not global_token or not global_device_id:
-        return Response("❌ ログインまたはデバイス未取得です /login にアクセスしてください", content_type="text/html; charset=utf-8")
+        return "❌ ログインまたはデバイス未取得です /login にアクセスしてください"
 
-    # フォロー中のアーティスト取得
-    artists_resp = requests.get(
-        "https://api.spotify.com/v1/me/following?type=artist&limit=10",
-        headers={"Authorization": f"Bearer {global_token}"}
-    ).json()
+    # 1. フォロー中アーティスト取得（複数ページ処理）
+    artists = []
+    url = "https://api.spotify.com/v1/me/following?type=artist&limit=50"
+    while url:
+        resp = requests.get(url, headers={"Authorization": f"Bearer {global_token}"}).json()
+        items = resp.get("artists", {}).get("items", [])
+        artists.extend(items)
+        url = resp.get("artists", {}).get("next")
 
-    artists = artists_resp.get("artists", {}).get("items", [])
     artist_ids = [a["id"] for a in artists]
 
+    # 2. トップトラック取得
     all_tracks = []
     for artist_id in artist_ids:
         top_resp = requests.get(
@@ -83,29 +86,42 @@ def personal_play_debug():
         ).json()
         all_tracks.extend(top_resp.get("tracks", []))
 
-    if not all_tracks:
-        return Response("🎵 トラックが取得できませんでした", content_type="text/html; charset=utf-8")
+    # 3. 特徴量取得（100曲ずつ）
+    features = []
+    for i in range(0, len(all_tracks), 100):
+        batch = all_tracks[i:i+100]
+        ids = [t["id"] for t in batch]
+        f_resp = requests.get(
+            "https://api.spotify.com/v1/audio-features",
+            headers={"Authorization": f"Bearer {global_token}"},
+            params={"ids": ",".join(ids)}
+        ).json()
+        features.extend(f_resp.get("audio_features", []))
 
-    track_ids = [t["id"] for t in all_tracks]
-    features_resp = requests.get(
-        "https://api.spotify.com/v1/audio-features",
-        headers={"Authorization": f"Bearer {global_token}"},
-        params={"ids": ",".join(track_ids[:100])}
-    ).json()
-
-    features = features_resp.get("audio_features", [])
-    bright_tracks = [t for t, f in zip(all_tracks, features) if f and f["valence"] > 0.6 and f["energy"] > 0.5]
+    # 4. 明るい曲フィルタ（valence > 0.5, energy > 0.4）
+    bright_tracks = []
+    debug_lines = []
+    for t, f in zip(all_tracks, features):
+        if f:
+            valence = f.get("valence", 0)
+            energy = f.get("energy", 0)
+            debug_lines.append(f"{t['name']} → valence: {valence:.2f}, energy: {energy:.2f}")
+            if valence > 0.5 and energy > 0.4:
+                bright_tracks.append(t)
 
     selected = random.choice(bright_tracks) if bright_tracks else None
 
-    message = (
-        f"✅ アーティスト数: {len(artists)}<br>"
-        f"🎵 トラック数: {len(all_tracks)}<br>"
-        f"🎯 明るい曲数: {len(bright_tracks)}<br>"
-        f"▶️ 選曲: {selected['name'] if selected else 'なし'}"
+    # HTML出力
+    html = (
+        f"🧑‍🎤 アーティスト数: {len(artist_ids)}<br>"
+        f"📘 トラック数: {len(all_tracks)}<br>"
+        f"🎈 明るい曲数: {len(bright_tracks)}<br>"
+        f"🎵 選曲: {selected['name'] if selected else 'なし'}<br><br>"
+        + "<br>".join(debug_lines[:50])  # 多すぎるので50曲まで表示
     )
 
-    return Response(message, content_type="text/html; charset=utf-8")
+    return html
 
 if __name__ == "__main__":
     app.run()
+
