@@ -15,7 +15,7 @@ global_device_id = None
 
 @app.route("/")
 def index():
-    return "🎷 Spotify 再生デモ — /login にアクセスしてください"
+    return "\ud83c\udfb5 Spotify \u518d\u751f\u30c7\u30e2 \u2014 /login \u306b\u30a2\u30af\u30bb\u30b9\u3057\u3066\u304f\u3060\u3055\u3044"
 
 @app.route("/login")
 def login():
@@ -57,23 +57,23 @@ def callback():
     devices = devices_resp.get("devices", [])
     global_device_id = devices[0]["id"] if devices else None
 
-    return "✅ Spotify にログインしました！"
+    return "\u2705 Spotify \u306b\u30ed\u30b0\u30a4\u30f3\u3057\u307e\u3057\u305f\uff01"
 
-@app.route("/personal_play")
-def personal_play():
+@app.route("/personal_play_debug")
+def personal_play_debug():
     global global_token, global_device_id
 
     if not global_token or not global_device_id:
-        return "❌ ログインまたはデバイス未取得です /login にアクセスしてください"
+        return "\u274c \u30ed\u30b0\u30a4\u30f3\u307e\u305f\u306f\u30c7\u30d0\u30a4\u30b9\u672a\u53d6\u5f97\u3067\u3059 /login \u306b\u30a2\u30af\u30bb\u30b9\u3057\u3066\u304f\u3060\u3055\u3044"
 
-    # 1. フォロー中アーティスト取得
     artists_resp = requests.get(
-        "https://api.spotify.com/v1/me/following?type=artist&limit=50",
+        "https://api.spotify.com/v1/me/following?type=artist&limit=10",
         headers={"Authorization": f"Bearer {global_token}"}
     ).json()
 
     artists = artists_resp.get("artists", {}).get("items", [])
     artist_ids = [a["id"] for a in artists]
+    debug_output = f"\ud83c\udfa4 \u30d5\u30a9\u30ed\u30fc\u4e2d\u30a2\u30fc\u30c6\u30a3\u30b9\u30c8\u6570: {len(artist_ids)}<br>"
 
     all_tracks = []
     for artist_id in artist_ids:
@@ -83,10 +83,11 @@ def personal_play():
         ).json()
         all_tracks.extend(top_resp.get("tracks", []))
 
-    if not all_tracks:
-        return "🎵 トラックが取得できませんでした"
+    debug_output += f"\ud83c\udfb5 \u30c8\u30e9\u30c3\u30af\u53d6\u5f97\u6570: {len(all_tracks)}<br>"
 
-    # 2. トラックの特徴量取得
+    if not all_tracks:
+        return debug_output + "\u26a0\ufe0f \u30c8\u30e9\u30c3\u30af\u304c\u53d6\u5f97\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f"
+
     track_ids = [t["id"] for t in all_tracks]
     features_resp = requests.get(
         "https://api.spotify.com/v1/audio-features",
@@ -96,10 +97,12 @@ def personal_play():
 
     features = features_resp.get("audio_features", [])
     bright_tracks = [t for t, f in zip(all_tracks, features)
-                     if f and f["valence"] > 0.4 and f["energy"] > 0.3]
+                     if f and f.get("valence") and f["valence"] > 0.4 and f["energy"] > 0.3]
+
+    debug_output += f"\u2728 \u660e\u308b\u3044\u66f2\u5019\u88dc\u6570: {len(bright_tracks)}<br>"
 
     if not bright_tracks:
-        return "😓 明るい曲が見つかりませんでした"
+        return debug_output + "\ud83d\ude13 \u660e\u308b\u3044\u66f2\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f"
 
     selected = random.choice(bright_tracks)
     uri = selected["uri"]
@@ -111,7 +114,7 @@ def personal_play():
         json={"uris": [uri]}
     )
 
-    return f"✅ 明るい曲『{selected['name']}』を再生しました！"
+    return debug_output + f"\u2705 \u300e{selected['name']}\u300f\u3092\u518d\u751f\u3057\u307e\u3057\u305f\uff01"
 
 if __name__ == "__main__":
     app.run()
