@@ -1,5 +1,7 @@
 from flask import Flask, redirect, request
-import requests, urllib.parse, base64, random
+import requests, urllib.parse, base64
+from sklearn.cluster import KMeans
+import numpy as np
 
 app = Flask(__name__)
 
@@ -10,13 +12,12 @@ SCOPE         = "user-read-playback-state user-modify-playback-state user-follow
 AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
 
-# グローバル状態
 global_token = None
 global_device_id = None
 
 @app.route("/")
 def index():
-    return "🎧 Spotify 再生デモ — /login にアクセスしてください"
+    return "🎧 Spotify クラスタリングデモ — /login にアクセスしてください"
 
 @app.route("/login")
 def login():
@@ -60,22 +61,23 @@ def callback():
 
     return "✅ Spotify にログインしました！"
 
-@app.route("/personal_play_debug")
-def personal_play_debug():
-    global global_token, global_device_id
+@app.route("/cluster_tracks")
+def cluster_tracks():
+    global global_token
 
-    if not global_token or not global_device_id:
-        return "❌ ログインまたはデバイス未取得です /login にアクセスしてください"
+    if not global_token:
+        return "❌ ログインしてください /login"
 
+    # フォロー中アーティスト取得
     artists_resp = requests.get(
-        "https://api.spotify.com/v1/me/following?type=artist&limit=50",
+        "https://api.spotify.com/v1/me/following?type=artist&limit=20",
         headers={"Authorization": f"Bearer {global_token}"}
     ).json()
 
     artists = artists_resp.get("artists", {}).get("items", [])
     artist_ids = [a["id"] for a in artists]
-    artist_names = [a["name"] for a in artists]
 
+    # 各アーティストのトップトラックを取得
     all_tracks = []
     for artist_id in artist_ids:
         top_resp = requests.get(
@@ -84,39 +86,41 @@ def personal_play_debug():
         ).json()
         all_tracks.extend(top_resp.get("tracks", []))
 
-    track_ids = [t["id"] for t in all_tracks]
+    # 音響特徴量取得
+    track_ids = [t["id"] for t in all_tracks if t.get("id")][:100]
     features_resp = requests.get(
         "https://api.spotify.com/v1/audio-features",
         headers={"Authorization": f"Bearer {global_token}"},
-        params={"ids": ",".join(track_ids[:100])}
+        params={"ids": ",".join(track_ids)}
     ).json()
-
     features = features_resp.get("audio_features", [])
-    bright_tracks = [t for t, f in zip(all_tracks, features)
-                     if f and f["valence"] > 0.6 and f["energy"] > 0.5]
-    dark_tracks = [t for t, f in zip(all_tracks, features)
-                   if f and not (f["valence"] > 0.6 and f["energy"] > 0.5)]
 
-    selected = random.choice(bright_tracks) if bright_tracks else None
-    selected_line = f"🎵 選曲: {selected['name']}" if selected else "🎵 選曲: なし"
+    # 特徴量をベクトル化（valence, energy, tempo）
+    data = []
+    names = []
+    for t, f in zip(all_tracks, features):
+        if f and f.get("valence") is not None:
+            data.append([f["valence"], f["energy"], f["tempo"]])
+            names.append(t["name"])
 
-    bright_lines = [f"{t['name']} (valence={f['valence']:.2f}, energy={f['energy']:.2f})"
-                    for t, f in zip(all_tracks, features)
-                    if f and f["valence"] > 0.6 and f["energy"] > 0.5]
+    if len(data) < 3:
+        return "❌ 有効なトラックが少なすぎます"
 
-    dark_lines = [f"{t['name']} (valence={f['valence']:.2f}, energy={f['energy']:.2f})"
-                  for t, f in zip(all_tracks, features)
-                  if f and not (f["valence"] > 0.6 and f["energy"] > 0.5)]
+    # クラスタリング（k=3）
+    kmeans = KMeans(n_clusters=3, random_state=0, n_init=10)
+    labels = kmeans.fit_predict(np.array(data))
 
-    return (
-        f"🧑‍🎤 アーティスト数: {len(artist_ids)}<br>"
-        f"🎼 アーティスト名: {', '.join(artist_names)}<br>"
-        f"📘 トラック数: {len(all_tracks)}<br>"
-        f"📍 明るい曲数: {len(bright_tracks)}<br>"
-        f"{selected_line}<br><br>"
-        f"🎶 <b>明るい曲:</b><br>{'<br>'.join(bright_lines)}<br><br>"
-        f"🎶 <b>明るくない曲:</b><br>{'<br>'.join(dark_lines)}"
-    )
+    # クラスタごとにまとめ
+    clusters = {0: [], 1: [], 2: []}
+    for name, label in zip(names, labels):
+        clusters[label].append(name)
+
+    html = "<h2>🎵 トラックのクラスタリング結果 (valence, energy, tempo)</h2>"
+    for cluster_id, tracks in clusters.items():
+        html += f"<b>Cluster {cluster_id + 1}</b>:<br>"
+        html += "<br>".join(tracks) + "<br><br>"
+
+    return html
 
 if __name__ == "__main__":
     app.run()
