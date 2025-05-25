@@ -1,6 +1,7 @@
 from flask import Flask, redirect, request
 import requests, urllib.parse, base64, random
 from sklearn.cluster import KMeans
+import numpy as np
 
 app = Flask(__name__)
 
@@ -17,7 +18,7 @@ global_device_id = None
 
 @app.route("/")
 def index():
-    return "🎧 Spotify 再生デモ — /login にアクセスしてください"
+    return "🎧 Spotify クラスタリングデモ — /login にアクセスしてください"
 
 @app.route("/login")
 def login():
@@ -63,19 +64,21 @@ def callback():
 
 @app.route("/cluster_tracks_debug")
 def cluster_tracks_debug():
-    global global_token, global_device_id
+    global global_token
 
     if not global_token:
-        return "❌ トークン未取得です /login にアクセスしてください"
+        return "❌ トークン未取得 /login にアクセスしてください"
 
-    # アーティスト取得
+    # フォロー中アーティスト取得
     artists_resp = requests.get(
-        "https://api.spotify.com/v1/me/following?type=artist&limit=20",
+        "https://api.spotify.com/v1/me/following?type=artist&limit=15",
         headers={"Authorization": f"Bearer {global_token}"}
     ).json()
     artists = artists_resp.get("artists", {}).get("items", [])
     artist_ids = [a["id"] for a in artists]
+    artist_names = [a["name"] for a in artists]
 
+    # トップトラック取得
     all_tracks = []
     for artist_id in artist_ids:
         top_resp = requests.get(
@@ -84,36 +87,42 @@ def cluster_tracks_debug():
         ).json()
         all_tracks.extend(top_resp.get("tracks", []))
 
-    track_ids = [t["id"] for t in all_tracks if t.get("id")]
-    track_names = [t["name"] for t in all_tracks if t.get("id")]
+    track_ids = [t["id"] for t in all_tracks]
+    track_names = [t["name"] for t in all_tracks]
 
+    # 特徴量取得
     features_resp = requests.get(
         "https://api.spotify.com/v1/audio-features",
         headers={"Authorization": f"Bearer {global_token}"},
-        params={"ids": ",".join(track_ids[:100])}  # 最大100件
+        params={"ids": ",".join(track_ids[:100])}
     ).json()
 
     features = features_resp.get("audio_features", [])
-    valid = [(t, f) for t, f in zip(all_tracks, features) if f]
-    invalid = [t["name"] for t, f in zip(all_tracks, features) if not f]
+    valid_tracks = []
+    invalid_tracks = []
+    track_info_lines = []
+
+    for t, f in zip(all_tracks, features):
+        if f:
+            valence = f["valence"]
+            energy = f["energy"]
+            tempo = f["tempo"]
+            valid_tracks.append((t["name"], valence, energy, tempo))
+            track_info_lines.append(f"🎵 {t['name']} - valence: {valence}, energy: {energy}, tempo: {tempo}")
+        else:
+            invalid_tracks.append(t["name"])
 
     html = f"""
-    🧑‍🎤 アーティスト数: {len(artist_ids)}<br>
-    📘 トラック数: {len(track_ids)}<br>
-    🎯 有効な特徴量: {len(valid)}<br>
-    ❌ 無効なトラック: {len(invalid)}<br>
+    🧑‍🎤 アーティスト数: {len(artist_names)}<br>
+    📘 トラック数: {len(all_tracks)}<br>
+    ✅ 有効な特徴量: {len(valid_tracks)}<br>
+    ❌ 無効なトラック: {len(invalid_tracks)}<br>
     <hr>
-    <h3>🎶 全トラック情報:</h3>
-    <ul>
+    <h4>🎶 全トラック情報:</h4>
+    {"<br>".join(track_info_lines)}<br><br>
+    <h4>❌ 特徴量取得できなかった曲:</h4>
+    {"<br>".join(invalid_tracks)}<br>
     """
-    for t, f in valid:
-        html += f"<li>{t['name']} — Valence: {f['valence']}, Energy: {f['energy']}, Tempo: {f['tempo']}</li>"
-    html += "</ul>"
-
-    html += "<h3>🚫 特徴量取得できなかった曲:</h3><ul>"
-    for name in invalid:
-        html += f"<li>{name}</li>"
-    html += "</ul>"
 
     return html
 
