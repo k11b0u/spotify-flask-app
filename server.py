@@ -1,11 +1,12 @@
 from flask import Flask, redirect, request
-import requests, urllib.parse, base64
+import requests, urllib.parse, base64, random
+from sklearn.cluster import KMeans
 
 app = Flask(__name__)
 
-CLIENT_ID     = "your_client_id"
-CLIENT_SECRET = "your_client_secret"
-REDIRECT_URI  = "your_redirect_uri"
+CLIENT_ID     = "7838a0cf003644ae8b5f3f75b9eb534e"
+CLIENT_SECRET = "d2d93b5ce2b7403f91125a0ea8685697"
+REDIRECT_URI  = "https://spotify-flask-app-pduk.onrender.com/callback"
 SCOPE         = "user-read-playback-state user-modify-playback-state user-follow-read"
 AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
@@ -14,24 +15,66 @@ TOKEN_URL     = "https://accounts.spotify.com/api/token"
 global_token = None
 global_device_id = None
 
-@app.route("/cluster_tracks_debug")
-def cluster_tracks_debug():
-    import random
+@app.route("/")
+def index():
+    return "🎧 Spotify 再生デモ — /login にアクセスしてください"
 
+@app.route("/login")
+def login():
+    params = {
+        "client_id":     CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri":  REDIRECT_URI,
+        "scope":         SCOPE,
+    }
+    return redirect(f"{AUTH_URL}?{urllib.parse.urlencode(params)}")
+
+@app.route("/callback")
+def callback():
     global global_token, global_device_id
 
-    if not global_token or not global_device_id:
-        return "❌ ログインまたはデバイス未取得です /login にアクセスしてください"
+    code = request.args.get("code")
+    auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
 
-    # 1. フォロー中アーティスト取得
+    res = requests.post(
+        TOKEN_URL,
+        data={
+            "grant_type":   "authorization_code",
+            "code":         code,
+            "redirect_uri": REDIRECT_URI,
+        },
+        headers={
+            "Authorization": f"Basic {b64_auth}",
+            "Content-Type":  "application/x-www-form-urlencoded",
+        },
+    )
+    token = res.json().get("access_token")
+    global_token = token
+
+    devices_resp = requests.get(
+        "https://api.spotify.com/v1/me/player/devices",
+        headers={"Authorization": f"Bearer {token}"}
+    ).json()
+    devices = devices_resp.get("devices", [])
+    global_device_id = devices[0]["id"] if devices else None
+
+    return "✅ Spotify にログインしました！"
+
+@app.route("/cluster_tracks_debug")
+def cluster_tracks_debug():
+    global global_token, global_device_id
+
+    if not global_token:
+        return "❌ トークン未取得です /login にアクセスしてください"
+
+    # アーティスト取得
     artists_resp = requests.get(
-        "https://api.spotify.com/v1/me/following?type=artist&limit=15",
+        "https://api.spotify.com/v1/me/following?type=artist&limit=20",
         headers={"Authorization": f"Bearer {global_token}"}
     ).json()
-
     artists = artists_resp.get("artists", {}).get("items", [])
     artist_ids = [a["id"] for a in artists]
-    artist_names = [a["name"] for a in artists]
 
     all_tracks = []
     for artist_id in artist_ids:
@@ -41,35 +84,38 @@ def cluster_tracks_debug():
         ).json()
         all_tracks.extend(top_resp.get("tracks", []))
 
-    track_ids = [t["id"] for t in all_tracks]
-    track_names = [t["name"] for t in all_tracks]
-    if not track_ids:
-        return "❌ トラックが取得できませんでした"
+    track_ids = [t["id"] for t in all_tracks if t.get("id")]
+    track_names = [t["name"] for t in all_tracks if t.get("id")]
 
     features_resp = requests.get(
         "https://api.spotify.com/v1/audio-features",
         headers={"Authorization": f"Bearer {global_token}"},
-        params={"ids": ",".join(track_ids[:100])}
+        params={"ids": ",".join(track_ids[:100])}  # 最大100件
     ).json()
 
     features = features_resp.get("audio_features", [])
-    valid_tracks = [(t, f) for t, f in zip(all_tracks, features) if f]
-    invalid_tracks = [(t["name"], t["id"]) for t, f in zip(all_tracks, features) if not f]
+    valid = [(t, f) for t, f in zip(all_tracks, features) if f]
+    invalid = [t["name"] for t, f in zip(all_tracks, features) if not f]
 
-    html = ""
-    html += f"🧑‍🎤 アーティスト数: {len(artist_ids)}<br>"
-    html += f"📘 トラック数: {len(track_ids)}<br>"
-    html += f"✅ 特徴量取得成功: {len(valid_tracks)}<br>"
-    html += f"❌ 取得失敗（None）: {len(invalid_tracks)}<br><br>"
+    html = f"""
+    🧑‍🎤 アーティスト数: {len(artist_ids)}<br>
+    📘 トラック数: {len(track_ids)}<br>
+    🎯 有効な特徴量: {len(valid)}<br>
+    ❌ 無効なトラック: {len(invalid)}<br>
+    <hr>
+    <h3>🎶 全トラック情報:</h3>
+    <ul>
+    """
+    for t, f in valid:
+        html += f"<li>{t['name']} — Valence: {f['valence']}, Energy: {f['energy']}, Tempo: {f['tempo']}</li>"
+    html += "</ul>"
 
-    html += "<h3>🎵 有効なトラック:</h3>"
-    for t, f in valid_tracks:
-        html += f"{t['name']} - valence: {f['valence']}, energy: {f['energy']}, tempo: {f['tempo']}<br>"
-
-    html += "<h3>🛑 無効なトラック:</h3>"
-    for name, id_ in invalid_tracks:
-        html += f"{name} (ID: {id_})<br>"
+    html += "<h3>🚫 特徴量取得できなかった曲:</h3><ul>"
+    for name in invalid:
+        html += f"<li>{name}</li>"
+    html += "</ul>"
 
     return html
 
-# 他のエンドポイントやloginなどは省略
+if __name__ == "__main__":
+    app.run()
