@@ -11,7 +11,8 @@ SCOPE         = (
     "user-modify-playback-state "
     "user-follow-read "
     "user-library-read "
-    "user-top-read"
+    "user-top-read "
+    "user-read-private"
 )
 AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
@@ -31,6 +32,7 @@ def login():
         "response_type": "code",
         "redirect_uri":  REDIRECT_URI,
         "scope":         SCOPE,
+        "show_dialog":   "true"  # 常に認証画面を表示してトークン更新されるように
     }
     return redirect(f"{AUTH_URL}?{urllib.parse.urlencode(params)}")
 
@@ -54,12 +56,12 @@ def callback():
             "Content-Type":  "application/x-www-form-urlencoded",
         },
     )
-    token = res.json().get("access_token")
-    global_token = token
+    token_data = res.json()
+    global_token = token_data.get("access_token")
 
     devices_resp = requests.get(
         "https://api.spotify.com/v1/me/player/devices",
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {global_token}"}
     ).json()
     devices = devices_resp.get("devices", [])
     global_device_id = devices[0]["id"] if devices else None
@@ -78,14 +80,21 @@ def debug_raw_features():
 
     # テスト用 track ID を使って取得
     track_ids = [
-        "4RWwuOg32PAquUiJoXsdF8",  # 例：YOASOBI の曲など有効なIDにする
+        "4RWwuOg32PAquUiJoXsdF8",
         "3n3pam7vgaValaiRUc9Lp",
         "0VijJiW4GLUZAMYd2vXMi3b"
     ]
     ids_param = ",".join(track_ids)
     url = f"https://api.spotify.com/v1/audio-features?ids={ids_param}"
 
-    res = requests.get(url, headers={"Authorization": f"Bearer {global_token}"})
+    res = requests.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {global_token}",
+            "Content-Type": "application/json"
+        }
+    )
+
     try:
         res_json = res.json()
     except:
