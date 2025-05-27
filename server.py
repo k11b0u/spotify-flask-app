@@ -1,19 +1,24 @@
-from flask import Flask, redirect, request, jsonify
-import requests, urllib.parse, base64
+from flask import Flask, redirect, request
+import requests, urllib.parse, base64, random
 
 app = Flask(__name__)
 
-# Spotify認証情報
 CLIENT_ID     = "7838a0cf003644ae8b5f3f75b9eb534e"
 CLIENT_SECRET = "d2d93b5ce2b7403f91125a0ea8685697"
 REDIRECT_URI  = "https://spotify-flask-app-pduk.onrender.com/callback"
-SCOPE         = "user-read-playback-state user-modify-playback-state user-follow-read"
+SCOPE         = (
+    "user-read-playback-state "
+    "user-modify-playback-state "
+    "user-follow-read "
+    "user-library-read "
+    "user-top-read"
+)
 AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
 
 # グローバル状態
 global_token = None
-global_track_ids = []
+global_device_id = None
 
 @app.route("/")
 def index():
@@ -31,7 +36,7 @@ def login():
 
 @app.route("/callback")
 def callback():
-    global global_token, global_track_ids
+    global global_token, global_device_id
 
     code = request.args.get("code")
     auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
@@ -49,45 +54,50 @@ def callback():
             "Content-Type":  "application/x-www-form-urlencoded",
         },
     )
-    global_token = res.json().get("access_token")
+    token = res.json().get("access_token")
+    global_token = token
 
-    # テスト用track ID取得（例: ビリーアイリッシュの代表曲）
-    global_track_ids = [
-        "4RVwu0g32PAqgUiJoXsdF8",  # example track
-        "3n3Ppam7vgaVa1iaRUc9Lp",
-        "0VjIjW4GlUZAMYd2vXMi3b"
-    ]
+    devices_resp = requests.get(
+        "https://api.spotify.com/v1/me/player/devices",
+        headers={"Authorization": f"Bearer {token}"}
+    ).json()
+    devices = devices_resp.get("devices", [])
+    global_device_id = devices[0]["id"] if devices else None
 
-    return "✅ Spotify 認証完了。/debug_raw_features にアクセスしてください"
+    return "✅ Spotify にログインしました！"
 
 @app.route("/debug_raw_features")
 def debug_raw_features():
-    global global_token, global_track_ids
+    global global_token
 
-    if not global_token or not global_track_ids:
-        return "❌ トークンまたはトラックIDがありません。先に /login にアクセスしてください"
+    html = "<h3>🎧 audio-features の raw JSON</h3>"
 
-    # トークン確認
-    debug_headers = {
-        "Authorization": f"Bearer {global_token}"
-    }
+    # トークンが存在しない場合
+    if not global_token:
+        return html + "<pre>❌ トークンがありません</pre>"
 
-    # 特徴量取得
-    features_resp = requests.get(
-        "https://api.spotify.com/v1/audio-features",
-        headers=debug_headers,
-        params={"ids": ",".join(global_track_ids[:100])}  # 最大100件
-    )
+    # テスト用 track ID を使って取得
+    track_ids = [
+        "4RWwuOg32PAquUiJoXsdF8",  # 例：YOASOBI の曲など有効なIDにする
+        "3n3pam7vgaValaiRUc9Lp",
+        "0VijJiW4GLUZAMYd2vXMi3b"
+    ]
+    ids_param = ",".join(track_ids)
+    url = f"https://api.spotify.com/v1/audio-features?ids={ids_param}"
 
-    return f"""
-    <h3>🔊 audio-features の raw JSON</h3>
-    <pre>{features_resp.text}</pre>
-    <hr>
-    <h4>🪪 トークン（先頭20文字）:</h4>
-    <pre>{global_token[:20]}...</pre>
-    <h4>🎵 Track IDs:</h4>
-    <pre>{global_track_ids}</pre>
-    """
+    res = requests.get(url, headers={"Authorization": f"Bearer {global_token}"})
+    try:
+        res_json = res.json()
+    except:
+        res_json = {"error": "JSON decode error"}
+
+    # 可視化用にトークンやIDも表示
+    html += "<hr>"
+    html += f"<p><strong>🪪 トークン（先頭20文字）:</strong><br><code>{global_token[:20]}...</code></p>"
+    html += f"<p><strong>🎵 Track IDs:</strong><br><code>{track_ids}</code></p>"
+    html += f"<pre>{res_json}</pre>"
+
+    return html
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
