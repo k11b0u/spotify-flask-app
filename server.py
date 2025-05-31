@@ -16,6 +16,7 @@ SCOPE         = (
 AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
 
+# グローバル変数
 global_token = None
 global_device_id = None
 
@@ -66,23 +67,37 @@ def callback():
     return f"""
         <p>✅ アクセストークン取得成功（先頭20文字）: <code>{token[:20]}...</code></p>
         <p>🔌 デバイスID: <code>{global_device_id}</code></p>
-        <p>➡ 次は <a href='/debug_raw_features'>/debug_raw_features</a> を開いてください</p>
+        <p>➞ 次は <a href='/debug_raw_features'>/debug_raw_features</a> を開いてください</p>
     """
+
+def get_tracks_from_followed_artists(token):
+    headers = {"Authorization": f"Bearer {token}"}
+    followed_url = "https://api.spotify.com/v1/me/following?type=artist&limit=10"
+    followed = requests.get(followed_url, headers=headers).json()
+    artists = followed.get("artists", {}).get("items", [])
+
+    track_ids = []
+    for artist in artists:
+        artist_id = artist["id"]
+        top_url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=JP"
+        top_tracks = requests.get(top_url, headers=headers).json()
+        items = top_tracks.get("tracks", [])
+        track_ids.extend([t["id"] for t in items])
+
+    return track_ids
 
 @app.route("/debug_raw_features")
 def debug_raw_features():
     global global_token
 
-    html = "<h3>🎧 audio-features の raw JSON</h3>"
-
+    html = "<h3>🎵 audio-features の raw JSON</h3>"
     if not global_token:
         return html + "<pre>❌ トークンがありません</pre>"
 
-    track_ids = [
-        "4RWwuOg32PAquUiJoXsdF8",
-        "3n3pam7vgaValaiRUc9Lp",
-        "0VijJiW4GLUZAMYd2vXMi3b"
-    ]
+    track_ids = get_tracks_from_followed_artists(global_token)[:10]  # 多すぎるとURLが長くなるため制限
+    if not track_ids:
+        return html + "<pre>⛔ 曲が取得できませんでした（フォロー中のアーティストに曲がない？）</pre>"
+
     ids_param = ",".join(track_ids)
     url = f"https://api.spotify.com/v1/audio-features?ids={ids_param}"
 
@@ -96,8 +111,8 @@ def debug_raw_features():
     html += f"<p><strong>🪪 トークン（先頭20文字）:</strong><br><code>{global_token[:20]}...</code></p>"
     html += f"<p><strong>🎵 Track IDs:</strong><br><code>{track_ids}</code></p>"
     html += f"<pre>{res_json}</pre>"
-
     return html
 
 if __name__ == "__main__":
     app.run()
+
