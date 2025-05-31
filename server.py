@@ -70,33 +70,57 @@ def callback():
         <p>➞ 次は <a href='/debug_raw_features'>/debug_raw_features</a> を開いてください</p>
     """
 
+# フォロー中アーティストからトラックIDと曲名・アーティスト名を取得
 def get_tracks_from_followed_artists(token):
     headers = {"Authorization": f"Bearer {token}"}
-    followed_url = "https://api.spotify.com/v1/me/following?type=artist&limit=10"
+    followed_url = "https://api.spotify.com/v1/me/following?type=artist&limit=50"
     followed = requests.get(followed_url, headers=headers).json()
     artists = followed.get("artists", {}).get("items", [])
 
-    track_ids = []
+    tracks = []
     for artist in artists:
         artist_id = artist["id"]
+        artist_name = artist.get("name", "")
+        # 各アーティストのトップトラックを取得
         top_url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=JP"
         top_tracks = requests.get(top_url, headers=headers).json()
         items = top_tracks.get("tracks", [])
-        track_ids.extend([t["id"] for t in items])
-
-    return track_ids
+        for t in items:
+            track_id = t.get("id")
+            track_name = t.get("name", "")
+            # 曲のメインアーティスト名（元アーティストとして表示）
+            main_artist = artist_name
+            tracks.append({
+                "id": track_id,
+                "name": track_name,
+                "artist": main_artist
+            })
+    return tracks
 
 @app.route("/debug_raw_features")
 def debug_raw_features():
     global global_token
 
-    html = "<h3>🎵 audio-features の raw JSON</h3>"
+    html = "<h3>🎵 audio-features の raw JSON（フォロー中アーティストのトラック）</h3>"
     if not global_token:
         return html + "<pre>❌ トークンがありません</pre>"
 
-    track_ids = get_tracks_from_followed_artists(global_token)[:10]  # 多すぎるとURLが長くなるため制限
-    if not track_ids:
-        return html + "<pre>⛔ 曲が取得できませんでした（フォロー中のアーティストに曲がない？）</pre>"
+    # 取得したトラック情報（上位50アーティスト × トップトラック）から最初の10曲を使用
+    all_tracks = get_tracks_from_followed_artists(global_token)
+    html += f"<p>👤 フォロー中アーティストから取得したトラック数: {len(all_tracks)}</p>"
+    if not all_tracks:
+        return html + "<pre>⛔ 曲が取得できませんでした（フォロー中アーティストに曲がない？）</pre>"
+
+    # 最初の10曲分のみIDリストを抜き出し
+    selected = all_tracks[:10]
+    track_ids = [t["id"] for t in selected]
+
+    # 曲名・アーティスト名リストも表示
+    html += "<h4>📝 選択されたトラック（最初の10件）:</h4>"
+    html += "<ul>"
+    for t in selected:
+        html += f"<li>{t['artist']} - {t['name']} (<code>{t['id']}</code>)</li>"
+    html += "</ul>"
 
     ids_param = ",".join(track_ids)
     url = f"https://api.spotify.com/v1/audio-features?ids={ids_param}"
@@ -115,4 +139,3 @@ def debug_raw_features():
 
 if __name__ == "__main__":
     app.run()
-
