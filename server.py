@@ -247,5 +247,30 @@ def debug_raw_features():
 
     return html
 
+@app.route("/debug_audio_features_test")
+def debug_audio_features_test():
+    global global_token
+
+    if not global_token:
+        return "<p>❌ トークンがありません。まず <a href='/login'>/login</a> してください。</p>"
+
+    # テスト用にSpotify公式が提供している存在する曲のID（多くのAPIテストで使われる）
+    test_ids = ["11dFghVXANMlKmJXsNCbNl"]
+    url = f"https://api.spotify.com/v1/audio-features?ids={','.join(test_ids)}"
+    res = requests.get(url, headers={"Authorization": f"Bearer {global_token}"})
+
+    html = "<h3>🔍 /audio-features APIテスト (固定1曲)</h3>"
+    html += f"<p>🎵 トラックID: <code>{test_ids[0]}</code></p>"
+    html += f"<p>🔐 トークン（先頭20文字）: <code>{global_token[:20]}...</code></p>"
+    html += f"<p>HTTP ステータス: {res.status_code}</p>"
+
+    try:
+        html += f"<pre>{res.json()}</pre>"
+    except:
+        html += "<pre>⚠️ JSONデコードエラー</pre>"
+
+    return html
+
+
 if __name__ == "__main__":
     app.run()
