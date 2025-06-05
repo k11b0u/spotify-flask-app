@@ -160,20 +160,31 @@ def emotion_classify():
     global global_token
 
     if not global_token:
+        print("NO TOKEN")
         return "<p>❌ トークンがありません。まず <a href='/login'>/login</a> してください。</p>"
 
     tracks = get_tracks_from_followed_artists(global_token)
+    print("TRACKS:", tracks)  # ← 追加
+
     if not tracks or isinstance(tracks, dict):
+        print("TRACK ERROR:", tracks)
         return "<p>トラック情報の取得に失敗しました。</p>"
 
     selected = tracks[:10]
     track_ids = [t['id'] for t in selected]
+    print("TRACK_IDS:", track_ids)  # ← 追加
+
     features_url = f"https://api.spotify.com/v1/audio-features?ids={','.join(track_ids)}"
+    print("FEATURES_URL:", features_url)  # ← 追加
+
     features_resp = requests.get(features_url, headers={"Authorization": f"Bearer {global_token}"})
+    print("FEATURES_STATUS:", features_resp.status_code, features_resp.text)  # ← 追加
+
     if features_resp.status_code != 200:
-        return f"<pre>audio-features エラー: {features_resp.status_code}</pre>"
+        return f"<pre>audio-features エラー: {features_resp.status_code}\n{features_resp.text}</pre>"
 
     features_list = features_resp.json().get("audio_features", [])
+    print("FEATURES_LIST:", features_list)  # ← 追加
 
     html = "<h3>曲の特徴量と感情分類（BPM/energy/valenceベース）</h3><table border=1><tr><th>曲名</th><th>アーティスト</th><th>BPM</th><th>energy</th><th>valence</th><th>acousticness</th><th>感情</th></tr>"
     for i, feat in enumerate(features_list):
@@ -185,6 +196,27 @@ def emotion_classify():
     html += "</table>"
 
     return html
+@app.route("/audio_features_test")
+def audio_features_test():
+    global global_token
+
+    if not global_token:
+        print("NO TOKEN")
+        return "<p>❌ トークンがありません。まず <a href='/login'>/login</a> してください。</p>"
+
+    test_id = "11dFghVXANMlKmJXsNCbNl"
+    url = f"https://api.spotify.com/v1/audio-features?ids={test_id}"
+    print("TEST_URL:", url)
+    res = requests.get(url, headers={"Authorization": f"Bearer {global_token}"})
+    print("TEST_FEATURES_STATUS:", res.status_code, res.text)
+
+    html = f"<h3>audio-featuresテスト</h3><p>HTTP {res.status_code}</p>"
+    try:
+        html += f"<pre>{res.json()}</pre>"
+    except:
+        html += "<pre>JSON decode error</pre>"
+    return html
+
 # ここまで新規追加▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
 # 既存の /debug_raw_features などは省略（↑のまま）
