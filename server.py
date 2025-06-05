@@ -16,14 +16,11 @@ SCOPE         = (
 AUTH_URL      = "https://accounts.spotify.com/authorize"
 TOKEN_URL     = "https://accounts.spotify.com/api/token"
 
-# ── グローバル変数 ──────────────────────────────
 global_token  = None
-global_scopes = None
-global_device_id = None
 
 @app.route("/")
 def index():
-    return "🎧 Spotify デバッグ用サンプル — まず <a href='/login'>/login</a> へアクセスしてください"
+    return "🎧 Spotifyシステムサンプル<br>まず <a href='/login'>/login</a> へアクセスしてください"
 
 @app.route("/login")
 def login():
@@ -37,11 +34,11 @@ def login():
 
 @app.route("/callback")
 def callback():
-    global global_token, global_scopes, global_device_id
+    global global_token
 
     code = request.args.get("code")
     if not code:
-        return "<p>❌ 認可コードが取得できませんでした。</p><p><a href='/login'>/login</a> からやり直してください。</p>"
+        return "<p>❌ 認可コードが取得できません。<a href='/login'>/login</a>からやり直してください。</p>"
 
     auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}"
     b64_auth = base64.b64encode(auth_str.encode()).decode()
@@ -62,80 +59,44 @@ def callback():
     if "access_token" not in token_json:
         err = token_json.get("error", "unknown_error")
         desc = token_json.get("error_description", "")
-        return f"<p>❌ アクセストークン取得に失敗しました: {err} / {desc}</p><p><a href='/login'>/login</a> から再度お試しください。</p>"
+        return f"<p>❌ アクセストークン取得に失敗しました: {err} / {desc}</p><a href='/login'>/login</a>から再度お試しください。"
 
     global_token  = token_json.get("access_token")
-    global_scopes = token_json.get("scope", "")
 
-    devices_resp = requests.get(
-        "https://api.spotify.com/v1/me/player/devices",
-        headers={"Authorization": f"Bearer {global_token}"}
-    ).json()
-    devices = devices_resp.get("devices", [])
-    global_device_id = devices[0]["id"] if devices else None
-
-    return f"""
+    return """
         <h3>✅ アクセストークン取得成功</h3>
-        <p>🪪 トークン（先頭20文字）: <code>{global_token[:20]}...</code></p>
-        <p>🔑 付与された scope: <code>{global_scopes}</code></p>
-        <p>🔌 デバイスID: <code>{global_device_id}</code></p>
-        <hr>
-        <p>➞ まずは <a href='/debug_token'>/debug_token</a> で <b>トークンの有効性</b> をチェック</p>
-        <p>➞ 次に <a href='/debug_raw_features'>/debug_raw_features</a> で <b>フォロー中アーティスト→audio-features</b> を試します</p>
-        <p>➞ 新機能 <a href='/emotion_classify'>/emotion_classify</a> で <b>音響特徴量ベースの感情分類</b> を試す</p>
+        <p>➞ <a href='/emotion_classify'>/emotion_classify</a> で音響特徴量ベースの感情分類を実行</p>
     """
-
-@app.route("/debug_token")
-def debug_token():
-    global global_token
-
-    if not global_token:
-        return "<p>❌ トークンがありません。<a href='/login'>/login</a> して取得してください。</p>"
-
-    resp = requests.get("https://api.spotify.com/v1/me", headers={"Authorization": f"Bearer {global_token}"})
-    if resp.status_code == 200:
-        me_json = resp.json()
-        username = me_json.get("display_name") or me_json.get("id")
-        return f"<p>✅ /me 呼び出し成功。ログイン中ユーザー: <strong>{username}</strong></p><pre>{me_json}</pre>"
-    elif resp.status_code == 401:
-        return "<p>⛔ /me 呼び出しで 401 Unauthorized。アクセストークンが期限切れの可能性があります。<br><a href='/login'>/login</a> から再試行してください。</p>"
-    elif resp.status_code == 403:
-        return "<p>⛔ /me 呼び出しで 403 Forbidden。トークンに必要なスコープが付与されていないか、テストユーザー登録がおかしいかもしれません。<br>– Developer Dashboard でテストユーザー登録を再確認。<br><a href='/login'>/login</a> から再試行してください。</p>"
-    else:
-        return f"<p>⛔ /me 呼び出しで予期せぬエラー: HTTP {resp.status_code}</p><pre>{resp.text}</pre>"
 
 def get_tracks_from_followed_artists(token):
     headers = {"Authorization": f"Bearer {token}"}
-    followed_url = "https://api.spotify.com/v1/me/following?type=artist&limit=50"
-    resp = requests.get(followed_url, headers=headers)
-    if resp.status_code == 403:
-        return {"error": "followed_forbidden"}
+    url = "https://api.spotify.com/v1/me/following?type=artist&limit=50"
+    resp = requests.get(url, headers=headers)
     if resp.status_code != 200:
         return []
     js = resp.json()
     artists = js.get("artists", {}).get("items", [])
     if not artists:
         return []
-    result = []
+    tracks = []
     for artist in artists:
         artist_id   = artist.get("id")
         artist_name = artist.get("name", "")
         if not artist_id:
             continue
-        top_url  = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=JP"
+        # トップトラック取得
+        top_url = f"https://api.spotify.com/v1/artists/{artist_id}/top-tracks?market=JP"
         top_resp = requests.get(top_url, headers=headers)
         if top_resp.status_code != 200:
             continue
-        top_json = top_resp.json()
-        tracks   = top_json.get("tracks", [])
-        for t in tracks:
-            t_id   = t.get("id")
+        top_tracks = top_resp.json().get("tracks", [])
+        for t in top_tracks:
+            t_id = t.get("id")
             t_name = t.get("name", "")
             if t_id:
-                result.append({"id": t_id, "name": t_name, "artist": artist_name})
-    return result
+                tracks.append({"id": t_id, "name": t_name, "artist": artist_name})
+    return tracks
 
-# ここから新規追加▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
 def classify_emotion_by_features(feat):
     bpm = feat['tempo']
     energy = feat['energy']
@@ -160,33 +121,22 @@ def emotion_classify():
     global global_token
 
     if not global_token:
-        print("NO TOKEN")
         return "<p>❌ トークンがありません。まず <a href='/login'>/login</a> してください。</p>"
 
     tracks = get_tracks_from_followed_artists(global_token)
-    print("TRACKS:", tracks)  # ← 追加
+    if not tracks:
+        return "<p>トラック情報が取得できませんでした。Spotifyで「フォロー中アーティスト」を増やして再挑戦してください。</p>"
 
-    if not tracks or isinstance(tracks, dict):
-        print("TRACK ERROR:", tracks)
-        return "<p>トラック情報の取得に失敗しました。</p>"
-
-    selected = tracks[:10]
+    selected = tracks[:10]  # 10曲だけ使う
     track_ids = [t['id'] for t in selected]
-    print("TRACK_IDS:", track_ids)  # ← 追加
-
     features_url = f"https://api.spotify.com/v1/audio-features?ids={','.join(track_ids)}"
-    print("FEATURES_URL:", features_url)  # ← 追加
-
     features_resp = requests.get(features_url, headers={"Authorization": f"Bearer {global_token}"})
-    print("FEATURES_STATUS:", features_resp.status_code, features_resp.text)  # ← 追加
-
     if features_resp.status_code != 200:
         return f"<pre>audio-features エラー: {features_resp.status_code}\n{features_resp.text}</pre>"
 
     features_list = features_resp.json().get("audio_features", [])
-    print("FEATURES_LIST:", features_list)  # ← 追加
 
-    html = "<h3>曲の特徴量と感情分類（BPM/energy/valenceベース）</h3><table border=1><tr><th>曲名</th><th>アーティスト</th><th>BPM</th><th>energy</th><th>valence</th><th>acousticness</th><th>感情</th></tr>"
+    html = "<h3>曲の特徴量と感情分類</h3><table border=1><tr><th>曲名</th><th>アーティスト</th><th>BPM</th><th>energy</th><th>valence</th><th>acousticness</th><th>感情</th></tr>"
     for i, feat in enumerate(features_list):
         if feat is None:
             continue
@@ -196,30 +146,6 @@ def emotion_classify():
     html += "</table>"
 
     return html
-@app.route("/audio_features_test")
-def audio_features_test():
-    global global_token
-
-    if not global_token:
-        print("NO TOKEN")
-        return "<p>❌ トークンがありません。まず <a href='/login'>/login</a> してください。</p>"
-
-    test_id = "11dFghVXANMlKmJXsNCbNl"
-    url = f"https://api.spotify.com/v1/audio-features?ids={test_id}"
-    print("TEST_URL:", url)
-    res = requests.get(url, headers={"Authorization": f"Bearer {global_token}"})
-    print("TEST_FEATURES_STATUS:", res.status_code, res.text)
-
-    html = f"<h3>audio-featuresテスト</h3><p>HTTP {res.status_code}</p>"
-    try:
-        html += f"<pre>{res.json()}</pre>"
-    except:
-        html += "<pre>JSON decode error</pre>"
-    return html
-
-# ここまで新規追加▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-
-# 既存の /debug_raw_features などは省略（↑のまま）
 
 if __name__ == "__main__":
     app.run()
